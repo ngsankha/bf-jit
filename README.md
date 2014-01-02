@@ -25,4 +25,4 @@ Mandelbrot (BF Interpreter)       8.304s
 Mandelbrot (BF JIT)               3.918s
 ```
 
-The unoptimized JIt is 2x faster than the optimizing interpreter.
+The unoptimized JIT is 2x faster than the optimizing interpreter.

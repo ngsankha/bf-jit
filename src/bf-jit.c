@@ -9,6 +9,18 @@ struct bf_loop {
 };
 typedef struct bf_loop *bf_loop_t;
 
+typedef struct ops {
+    char token;
+    int count;
+} ops;
+
+void emitOpcodes(jit_function_t, jit_value_t, ops*);
+void emitIncrement(jit_function_t, jit_value_t, ops*);
+void emitDecrement(jit_function_t, jit_value_t, ops*);
+void emitIncrementPtr(jit_function_t, jit_value_t, ops*);
+void emitDecrementPtr(jit_function_t, jit_value_t, ops*);
+jit_type_t ubyte_ptr;
+
 void loop_start(jit_function_t function, bf_loop_t *loop) {
     bf_loop_t newloop = (bf_loop_t)jit_malloc(sizeof(struct bf_loop));
     newloop->start = jit_label_undefined;
@@ -27,7 +39,7 @@ void loop_stop(jit_function_t function, bf_loop_t *loop) {
 }
 
 jit_function_t bf_compile(jit_context_t cx, FILE *fp) {
-    jit_type_t ubyte_ptr, params[1], putchar_params[1], signature, putchar_sig, getchar_sig;
+    jit_type_t params[1], putchar_params[1], signature, putchar_sig, getchar_sig;
     jit_value_t ptr, uptr, ubyte, tmp;
     bf_loop_t loop = NULL;
 
@@ -42,43 +54,75 @@ jit_function_t bf_compile(jit_context_t cx, FILE *fp) {
     uptr = jit_value_create_nint_constant(function, ubyte_ptr, 1);
     ubyte = jit_value_create_nint_constant(function, jit_type_ubyte, 1);
 
+    ops *unit = (ops*)malloc(sizeof(ops));
+    unit->count = 0;
+    int first = 1;
+
     while(!feof(fp)) {
         char c = fgetc(fp);
+        if (first) {
+            unit->token = c;
+            first = 0;
+        }
         switch(c) {
             case '>':
-                tmp = jit_insn_add(function, ptr, uptr);
-                jit_insn_store(function, ptr, tmp);
+                if(unit->token == '>')
+                    unit->count++;
+                else {
+                    emitOpcodes(function, ptr, unit);
+                    unit->token = '>';
+                    unit->count = 1;
+                }
                 break;
             case '<':
-                tmp = jit_insn_sub(function, ptr, uptr);
-                jit_insn_store(function, ptr, tmp);
+                if(unit->token == '<')
+                    unit->count++;
+                else {
+                    emitOpcodes(function, ptr, unit);
+                    unit->token = '<';
+                    unit->count = 1;
+                }
                 break;
             case '+':
-                tmp = jit_insn_load_relative(function, ptr, 0, jit_type_ubyte);
-                tmp = jit_insn_add(function, tmp, ubyte);
-                tmp = jit_insn_convert(function, tmp, jit_type_ubyte, 0);
-                jit_insn_store_relative(function, ptr, 0, tmp);
+                if(unit->token == '+')
+                    unit->count++;
+                else {
+                    emitOpcodes(function, ptr, unit);
+                    unit->token = '+';
+                    unit->count = 1;
+                }
                 break;
             case '-':
-                tmp = jit_insn_load_relative(function, ptr, 0, jit_type_ubyte);
-                tmp = jit_insn_sub(function, tmp, ubyte);
-                tmp = jit_insn_convert(function, tmp, jit_type_ubyte, 0);
-                jit_insn_store_relative(function, ptr, 0, tmp);
+                if(unit->token == '-')
+                    unit->count++;
+                else {
+                    emitOpcodes(function, ptr, unit);
+                    unit->token = '-';
+                    unit->count = 1;
+                }
                 break;
             case '.':
+                emitOpcodes(function, ptr, unit);
+                unit->token = '.';
                 tmp = jit_insn_load_relative(function, ptr, 0, jit_type_ubyte);
                 jit_insn_call_native(function, "putchar", putchar, putchar_sig, &tmp, 1, JIT_CALL_NOTHROW);
                 break;
             case ',':
+                emitOpcodes(function, ptr, unit);
+                unit->token = '.';
                 jit_insn_call_native(function, "getchar", getchar, getchar_sig, NULL, 0, JIT_CALL_NOTHROW);
                 jit_insn_store_relative(function, ptr, 0, tmp);
                 break;
             case '[':
+                emitOpcodes(function, ptr, unit);
+                unit->token = '[';
                 loop_start(function, &loop);
                 tmp = jit_insn_load_relative(function, ptr, 0, jit_type_ubyte);
                 jit_insn_branch_if_not(function, tmp, &loop->stop);
                 break;
             case ']':
+                emitOpcodes(function, ptr, unit);
+                unit->token = ']';
                 loop_stop(function, &loop);
                 break;
         }
@@ -88,6 +132,55 @@ jit_function_t bf_compile(jit_context_t cx, FILE *fp) {
     jit_function_compile(function);
 
     return function;
+}
+
+void emitOpcodes(jit_function_t function, jit_value_t ptr, ops *unit) {
+    switch(unit->token) {
+        case '>':
+            emitIncrementPtr(function, ptr, unit);
+            break;
+        case '<':
+            emitDecrementPtr(function, ptr, unit);
+            break;
+        case '+':
+            emitIncrement(function, ptr, unit);
+            break;
+        case '-':
+            emitDecrement(function, ptr, unit);
+            break;
+    }
+}
+
+void emitIncrement(jit_function_t function, jit_value_t ptr, ops *unit) {
+    //printf("Emitting codes for %c %d times\n", unit->token, unit->count);
+    jit_value_t tmp = jit_insn_load_relative(function, ptr, 0, jit_type_ubyte);
+    jit_value_t numbyte = jit_value_create_nint_constant(function, jit_type_ubyte, unit->count);
+    tmp = jit_insn_add(function, tmp, numbyte);
+    tmp = jit_insn_convert(function, tmp, jit_type_ubyte, 0);
+    jit_insn_store_relative(function, ptr, 0, tmp);
+}
+
+void emitDecrement(jit_function_t function, jit_value_t ptr, ops *unit) {
+    //printf("Emitting codes for %c %d times\n", unit->token, unit->count);
+    jit_value_t tmp = jit_insn_load_relative(function, ptr, 0, jit_type_ubyte);
+    jit_value_t numbyte = jit_value_create_nint_constant(function, jit_type_ubyte, unit->count);
+    tmp = jit_insn_sub(function, tmp, numbyte);
+    tmp = jit_insn_convert(function, tmp, jit_type_ubyte, 0);
+    jit_insn_store_relative(function, ptr, 0, tmp);
+}
+
+void emitIncrementPtr(jit_function_t function, jit_value_t ptr, ops *unit) {
+    //printf("Emitting codes for %c %d times\n", unit->token, unit->count);
+    jit_value_t numbyte = jit_value_create_nint_constant(function, ubyte_ptr, unit->count);
+    jit_value_t tmp = jit_insn_add(function, ptr, numbyte);
+    jit_insn_store(function, ptr, tmp);
+}
+
+void emitDecrementPtr(jit_function_t function, jit_value_t ptr, ops *unit) {
+    //printf("Emitting codes for %c %d times\n", unit->token, unit->count);
+    jit_value_t numbyte = jit_value_create_nint_constant(function, ubyte_ptr, unit->count);
+    jit_value_t tmp = jit_insn_sub(function, ptr, numbyte);
+    jit_insn_store(function, ptr, tmp);
 }
 
 int main(int argc, char const *argv[]) {
