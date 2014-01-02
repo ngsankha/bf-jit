@@ -2,7 +2,7 @@
 
 A JIT compiler for Brainf*ck programs made using LibJIT.
 
-This does not do any code optimizations as of yet.
+It does very naive optimizations right now, like folding of multiple same instructions into one.
 
 Blog post about the same is [here](http://thelimbeck.wordpress.com/2013/12/31/a-brainfck-jit/).
 
@@ -22,7 +22,7 @@ Implementation                      Time
 Mandelbrot (C Unoptimized)       22.343s
 Mandelbrot (C Optimized)          1.241s
 Mandelbrot (BF Interpreter)       8.304s
-Mandelbrot (BF JIT)               3.918s
+Mandelbrot (BF JIT)               1.609s
 ```
 
-The unoptimized JIT is 2x faster than the optimizing interpreter.
+The unoptimized JIT is 5x faster than the optimizing interpreter and almost at par with the optimized C code.
