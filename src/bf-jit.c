@@ -1,25 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <jit/jit.h>
-
-struct bf_loop {
-    jit_label_t start;
-    jit_label_t stop;
-    struct bf_loop *parent;
-};
-typedef struct bf_loop *bf_loop_t;
-
-typedef struct ops {
-    char token;
-    int count;
-} ops;
-
-void emitOpcodes(jit_function_t, jit_value_t, ops*);
-void emitIncrement(jit_function_t, jit_value_t, ops*);
-void emitDecrement(jit_function_t, jit_value_t, ops*);
-void emitIncrementPtr(jit_function_t, jit_value_t, ops*);
-void emitDecrementPtr(jit_function_t, jit_value_t, ops*);
-jit_type_t ubyte_ptr;
+#include "bf-jit.h"
 
 void loop_start(jit_function_t function, bf_loop_t *loop) {
     bf_loop_t newloop = (bf_loop_t)jit_malloc(sizeof(struct bf_loop));
@@ -66,41 +45,13 @@ jit_function_t bf_compile(jit_context_t cx, FILE *fp) {
         }
         switch(c) {
             case '>':
-                if(unit->token == '>')
-                    unit->count++;
-                else {
-                    emitOpcodes(function, ptr, unit);
-                    unit->token = '>';
-                    unit->count = 1;
-                }
-                break;
+                OPTIMIZE_TOKEN('>')
             case '<':
-                if(unit->token == '<')
-                    unit->count++;
-                else {
-                    emitOpcodes(function, ptr, unit);
-                    unit->token = '<';
-                    unit->count = 1;
-                }
-                break;
+                OPTIMIZE_TOKEN('<')
             case '+':
-                if(unit->token == '+')
-                    unit->count++;
-                else {
-                    emitOpcodes(function, ptr, unit);
-                    unit->token = '+';
-                    unit->count = 1;
-                }
-                break;
+                OPTIMIZE_TOKEN('+')
             case '-':
-                if(unit->token == '-')
-                    unit->count++;
-                else {
-                    emitOpcodes(function, ptr, unit);
-                    unit->token = '-';
-                    unit->count = 1;
-                }
-                break;
+                OPTIMIZE_TOKEN('-')
             case '.':
                 emitOpcodes(function, ptr, unit);
                 unit->token = '.';
@@ -152,7 +103,6 @@ void emitOpcodes(jit_function_t function, jit_value_t ptr, ops *unit) {
 }
 
 void emitIncrement(jit_function_t function, jit_value_t ptr, ops *unit) {
-    //printf("Emitting codes for %c %d times\n", unit->token, unit->count);
     jit_value_t tmp = jit_insn_load_relative(function, ptr, 0, jit_type_ubyte);
     jit_value_t numbyte = jit_value_create_nint_constant(function, jit_type_ubyte, unit->count);
     tmp = jit_insn_add(function, tmp, numbyte);
@@ -161,7 +111,6 @@ void emitIncrement(jit_function_t function, jit_value_t ptr, ops *unit) {
 }
 
 void emitDecrement(jit_function_t function, jit_value_t ptr, ops *unit) {
-    //printf("Emitting codes for %c %d times\n", unit->token, unit->count);
     jit_value_t tmp = jit_insn_load_relative(function, ptr, 0, jit_type_ubyte);
     jit_value_t numbyte = jit_value_create_nint_constant(function, jit_type_ubyte, unit->count);
     tmp = jit_insn_sub(function, tmp, numbyte);
@@ -170,14 +119,12 @@ void emitDecrement(jit_function_t function, jit_value_t ptr, ops *unit) {
 }
 
 void emitIncrementPtr(jit_function_t function, jit_value_t ptr, ops *unit) {
-    //printf("Emitting codes for %c %d times\n", unit->token, unit->count);
     jit_value_t numbyte = jit_value_create_nint_constant(function, ubyte_ptr, unit->count);
     jit_value_t tmp = jit_insn_add(function, ptr, numbyte);
     jit_insn_store(function, ptr, tmp);
 }
 
 void emitDecrementPtr(jit_function_t function, jit_value_t ptr, ops *unit) {
-    //printf("Emitting codes for %c %d times\n", unit->token, unit->count);
     jit_value_t numbyte = jit_value_create_nint_constant(function, ubyte_ptr, unit->count);
     jit_value_t tmp = jit_insn_sub(function, ptr, numbyte);
     jit_insn_store(function, ptr, tmp);
