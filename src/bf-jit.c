@@ -60,7 +60,7 @@ jit_function_t bf_compile(jit_context_t cx, FILE *fp) {
                 break;
             case ',':
                 emitOpcodes(function, ptr, unit);
-                unit->token = '.';
+                unit->token = ',';
                 jit_insn_call_native(function, "getchar", getchar, getchar_sig, NULL, 0, JIT_CALL_NOTHROW);
                 jit_insn_store_relative(function, ptr, 0, tmp);
                 break;
